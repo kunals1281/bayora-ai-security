@@ -1,0 +1,27 @@
+# Dockerfile for Bayora API Engine
+FROM node:20-alpine AS base
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
+
+FROM base AS dependencies
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/ ./packages/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS runner
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/packages ./packages
+COPY package.json pnpm-workspace.yaml turbo.json ./
+COPY apps/api ./apps/api
+COPY data ./data
+
+# Non-root user for container security
+USER node
+
+ENV PORT=4000
+ENV HOST=0.0.0.0
+EXPOSE 4000
+
+CMD ["node", "./apps/api/node_modules/tsx/dist/cli.mjs", "apps/api/src/server.ts"]

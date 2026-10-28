@@ -162,6 +162,7 @@ export class OpenAIModelAdapter implements ModelAdapter {
       output: outputText,
       durationMs: Date.now() - startedAt,
       provider: "openai",
+      isMock: false,
       cacheSalt: request.cacheSalt,
       raw: parsed,
     };

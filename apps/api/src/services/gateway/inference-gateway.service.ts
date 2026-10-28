@@ -3,9 +3,9 @@ import {
   type ModelAdapter,
   type ModelGenerateRequest,
   type ModelGenerateResponse,
-  type ModelMessage,
 } from "../../adapters/models";
 import { RequestBalancer } from "./request-balancer";
+import { auditChainService } from "../audit/audit-chain.service";
 import type { GatewayClient } from "../../middleware/gateway-auth";
 
 export interface GenerateApiInput {
@@ -15,8 +15,8 @@ export interface GenerateApiInput {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
-  tenant?: "red" | "blue" | "admin";
   capability?: string;
+  evaluationId?: string;
 }
 
 export interface OpenAIChatCompletionInput {
@@ -28,11 +28,12 @@ export interface OpenAIChatCompletionInput {
   }>;
   temperature?: number;
   max_tokens?: number;
+  maxTokens?: number;
   top_p?: number;
   stream?: boolean;
   stop?: string[];
-  tenant?: "red" | "blue" | "admin";
   capability?: string;
+  evaluationId?: string;
 }
 
 export class InferenceGatewayService {
@@ -67,19 +68,13 @@ export class InferenceGatewayService {
     });
   }
 
-  private generateTenantCacheSalt(tenant?: string): string {
-    if (!tenant) return "salt_std_default";
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `salt_${tenant}_${rand}`;
-  }
-
   async generate(
     input: GenerateApiInput,
     client?: GatewayClient,
   ): Promise<ModelGenerateResponse> {
-    const startedAt = Date.now();
-    const effectiveTenant = (client?.tenant === "admin" ? input.tenant : client?.tenant) || input.tenant || "standard";
-    const cacheSalt = this.generateTenantCacheSalt(effectiveTenant);
+    // Tenant STRICTLY comes from verified token
+    const tenant = client?.tenant ?? "standard";
+    const cacheSalt = client?.cacheSalt ?? `salt_${tenant}_default`;
 
     const modelRequest: ModelGenerateRequest = {
       prompt: input.prompt,
@@ -88,44 +83,98 @@ export class InferenceGatewayService {
       temperature: input.temperature,
       max_tokens: input.max_tokens,
       top_p: input.top_p,
-      tenant: effectiveTenant as any,
+      tenant: tenant as any,
       capability: input.capability ?? "model.inference",
       cacheSalt,
     };
 
-    const response = await this.balancer.executeWithBalancing(modelRequest);
-    this.updateStats(response);
-    return response;
+    try {
+      const response = await this.primaryAdapter.generate(modelRequest);
+      this.updateStats(response);
+
+      // Record in cryptographic audit chain
+      auditChainService.recordEvent("GATEWAY_INFERENCE", {
+        tenant,
+        evaluationId: client?.evaluationId ?? input.evaluationId ?? "eval_default",
+        capability: input.capability ?? "model.inference",
+        model: response.model,
+        provider: response.provider,
+        isMock: response.isMock,
+        cacheSalt: response.cacheSalt,
+        durationMs: response.durationMs,
+        tokens: response.usage.total_tokens,
+      });
+
+      return response;
+    } catch (err: any) {
+      auditChainService.recordEvent("MODEL_ERROR", {
+        tenant,
+        capability: input.capability ?? "model.inference",
+        error: err.message,
+        provider: this.primaryAdapter.name,
+      });
+      throw err;
+    }
   }
 
   async chatCompletions(
     input: OpenAIChatCompletionInput,
     client?: GatewayClient,
   ): Promise<ModelGenerateResponse> {
-    const startedAt = Date.now();
-    const effectiveTenant = (client?.tenant === "admin" ? input.tenant : client?.tenant) || input.tenant || "standard";
-    const cacheSalt = this.generateTenantCacheSalt(effectiveTenant);
+    // Tenant STRICTLY comes from verified token
+    const tenant = client?.tenant ?? "standard";
+    const cacheSalt = client?.cacheSalt ?? `salt_${tenant}_default`;
 
     const modelRequest: ModelGenerateRequest = {
       messages: input.messages,
       model: input.model,
       temperature: input.temperature,
-      max_tokens: input.max_tokens,
+      max_tokens: input.max_tokens ?? input.maxTokens,
       top_p: input.top_p,
       stream: input.stream,
       stop: input.stop,
-      tenant: effectiveTenant as any,
+      tenant: tenant as any,
       capability: input.capability ?? "model.inference",
       cacheSalt,
     };
 
-    const response = await this.balancer.executeWithBalancing(modelRequest);
-    this.updateStats(response);
-    return response;
+    try {
+      const response = await this.primaryAdapter.generate(modelRequest);
+      this.updateStats(response);
+
+      auditChainService.recordEvent("GATEWAY_INFERENCE", {
+        tenant,
+        evaluationId: client?.evaluationId ?? input.evaluationId ?? "eval_default",
+        capability: input.capability ?? "model.inference",
+        model: response.model,
+        provider: response.provider,
+        isMock: response.isMock,
+        cacheSalt: response.cacheSalt,
+        durationMs: response.durationMs,
+        tokens: response.usage.total_tokens,
+      });
+
+      return response;
+    } catch (err: any) {
+      auditChainService.recordEvent("MODEL_ERROR", {
+        tenant,
+        capability: input.capability ?? "model.inference",
+        error: err.message,
+        provider: this.primaryAdapter.name,
+      });
+      throw err;
+    }
   }
 
   getAvailableModels() {
     return [
+      {
+        id: "qwen2.5:3b",
+        object: "model",
+        created: 1718000000,
+        owned_by: "alibaba-qwen",
+        isDefault: true,
+      },
       {
         id: "qwen2.5:7b",
         object: "model",
@@ -139,10 +188,11 @@ export class InferenceGatewayService {
         owned_by: "openai",
       },
       {
-        id: "bayora-target-model",
+        id: "bayora-target-mock",
         object: "model",
         created: 1718000000,
         owned_by: "bayora-security",
+        isMock: true,
       },
     ];
   }
@@ -153,7 +203,7 @@ export class InferenceGatewayService {
     this.averageLatencyMs =
       this.averageLatencyMs === 0
         ? res.durationMs
-        : Math.round((this.averageLatencyMs * 0.8) + (res.durationMs * 0.2));
+        : Math.round(this.averageLatencyMs * 0.8 + res.durationMs * 0.2);
   }
 
   getStats() {

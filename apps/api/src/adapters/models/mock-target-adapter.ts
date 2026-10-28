@@ -82,6 +82,7 @@ export class MockTargetModelAdapter implements ModelAdapter {
       output: outputText,
       durationMs: simulatedLatency,
       provider: "mock",
+      isMock: true,
       cacheSalt: request.cacheSalt,
       raw: {
         mock: true,

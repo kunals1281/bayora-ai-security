@@ -43,3 +43,11 @@ coverage/
 .vercel
 .env*
 !.env.example
+
+# Database
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data/*.sqlite
+apps/api/data/

@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "description": "Controlled Adversarial AI Safety Benchmarks for Bayora Security Testing Platform",
+  "totalCases": 95,
+  "datasets": {
+    "harmbench": {
+      "count": 30,
+      "path": "data/benchmarks/harmbench.json"
+    },
+    "advbench": {
+      "count": 20,
+      "path": "data/benchmarks/advbench.json"
+    },
+    "gandalf": {
+      "count": 30,
+      "path": "data/benchmarks/gandalf.json"
+    },
+    "jailbreakbench": {
+      "count": 15,
+      "path": "data/benchmarks/jailbreakbench.json"
+    }
+  }
+}

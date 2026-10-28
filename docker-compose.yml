@@ -1,45 +1,109 @@
 version: "3.8"
 
+networks:
+  # Internal micro-segmented networks: communication between red, blue and target directly is blocked
+  red_net:
+    internal: true
+  blue_net:
+    internal: true
+  target_net:
+    internal: true
+  public_net:
+    driver: bridge
+
 services:
+  # 1. Bayora Inference Gateway & Control API
   api:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @oosc/api dev"
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     ports:
       - "4000:4000"
     environment:
       - PORT=4000
       - HOST=0.0.0.0
       - CORS_ORIGIN=http://localhost:3000
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_EVALUATION_MODEL=${OPENAI_EVALUATION_MODEL:-gpt-4o-mini}
+      - TARGET_LLM_PROVIDER=${TARGET_LLM_PROVIDER:-mock}
+      - TARGET_LLM_ENDPOINT=${TARGET_LLM_ENDPOINT:-http://target:11434}
+      - TARGET_LLM_MODEL=${TARGET_LLM_MODEL:-qwen2.5:3b}
+      - DATABASE_TYPE=sqlite
+      - SQLITE_DB_PATH=/app/data/bayora.sqlite
+    networks:
+      - public_net
+      - red_net
+      - blue_net
+      - target_net
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
 
+  # 2. Security Console (Frontend)
   web:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @oosc/web dev"
+    build:
+      context: .
+      dockerfile: Dockerfile.web
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:4000
+    networks:
+      - public_net
     depends_on:
       - api
     restart: unless-stopped
 
-  mock-agent:
-    image: node:20-alpine
-    working_dir: /app
+  # 3. Target Model (Ollama Container / vLLM compatible)
+  target:
+    image: ollama/ollama:latest
+    networks:
+      - target_net
+    # Target is strictly on target_net - no direct route from Red or Blue
+    expose:
+      - "11434"
     volumes:
-      - .:/app
-    command: node mock-agent.js
-    ports:
-      - "5000:5000"
+      - ./data/ollama:/root/.ollama
+    restart: unless-stopped
+
+  # 4. Red Team Runner Sandbox (Hardened: non-root, cap_drop ALL, read_only rootfs)
+  red:
+    image: alpine:latest
+    command: sh -c "while true; do sleep 3600; done"
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    pids_limit: 100
+    mem_limit: 512m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     environment:
-      - MOCK_AGENT_PORT=5000
-      - MOCK_AGENT_HOST=0.0.0.0
+      - TENANT=red
+      - CANARY_RED_SECRET=CANARY_RED_9841fbc8
+    networks:
+      - red_net
+    restart: unless-stopped
+
+  # 5. Blue Team Defender Sandbox (Hardened: non-root, cap_drop ALL, read_only rootfs)
+  blue:
+    image: alpine:latest
+    command: sh -c "while true; do sleep 3600; done"
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    pids_limit: 100
+    mem_limit: 512m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      - TENANT=blue
+      - CANARY_BLUE_SECRET=CANARY_BLUE_712a45de
+    networks:
+      - blue_net
     restart: unless-stopped

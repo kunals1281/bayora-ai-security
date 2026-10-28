@@ -151,6 +151,7 @@ export class OllamaModelAdapter implements ModelAdapter {
       output: outputText,
       durationMs: Date.now() - startedAt,
       provider: "ollama",
+      isMock: false,
       cacheSalt: request.cacheSalt,
       raw: parsed,
     };

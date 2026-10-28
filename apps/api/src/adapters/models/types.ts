@@ -48,9 +48,11 @@ export interface ModelGenerateResponse {
   output: string;
   durationMs: number;
   provider: string;
+  isMock: boolean;
   cacheSalt?: string;
   raw?: unknown;
 }
+
 
 export interface ModelAdapter {
   readonly name: string;
