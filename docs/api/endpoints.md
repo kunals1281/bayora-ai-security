@@ -136,3 +136,92 @@ Compares two test runs for regression analysis.
     "currentRunId": "uuid"
   }
   ```
+
+---
+
+## Inference Gateway (P1)
+
+### `POST /api/v1/generate`
+Executes mediated inference through the Capability Gateway with per-tenant cache-salting, rate limiting, and Bearer token authorization.
+- **Headers**:
+  - `Authorization: Bearer <GATEWAY_API_KEY>` or `x-api-key: <token>`
+- **Body**:
+  ```json
+  {
+    "prompt": "Evaluate prompt injection defenses",
+    "model": "qwen2.5:7b",
+    "temperature": 0.7,
+    "max_tokens": 512,
+    "tenant": "red"
+  }
+  ```
+- **Response (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "text": "Model completion text...",
+    "model": "qwen2.5:7b",
+    "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 45,
+      "total_tokens": 57
+    },
+    "durationMs": 18,
+    "cacheSalt": "salt_red_a8f9c2",
+    "tenant": "red"
+  }
+  ```
+- **Headers Returned**:
+  - `X-RateLimit-Limit: 10`
+  - `X-RateLimit-Remaining: 9`
+  - `X-RateLimit-Reset: <timestamp>`
+
+### `POST /v1/chat/completions` (OpenAI-Compatible)
+Standard OpenAI chat completions route compatible with OpenAI SDK, LangChain, and LlamaIndex.
+- **Headers**:
+  - `Authorization: Bearer <GATEWAY_API_KEY>`
+- **Body**:
+  ```json
+  {
+    "model": "qwen2.5:7b",
+    "messages": [
+      { "role": "system", "content": "You are a cyber security defensive agent." },
+      { "role": "user", "content": "Explain prefix-cache timing side-channel isolation." }
+    ],
+    "temperature": 0.2
+  }
+  ```
+- **Response (200 OK)**:
+  ```json
+  {
+    "id": "chatcmpl-mock-oxslx3qp",
+    "object": "chat.completion",
+    "created": 1793167310,
+    "model": "qwen2.5:7b",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Model completion..."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 25,
+      "completion_tokens": 47,
+      "total_tokens": 72
+    }
+  }
+  ```
+
+### `GET /v1/models`
+Returns list of available target LLMs.
+
+### `GET /api/v1/gateway/stats`
+Returns gateway observability metrics (active requests, total tokens served, average latency, rate limiter clients).
+
+### `POST /api/v1/gateway/reset-limits`
+Resets the sliding window rate limiter bucket for benchmarking and testing.
+

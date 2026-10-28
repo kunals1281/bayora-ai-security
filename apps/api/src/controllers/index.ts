@@ -12,4 +12,7 @@ export { regressionController } from "./regression-controller";
 
 export { traceController } from "./trace-controller";
 
-export { copilotController } from "./copilot-controller";
+export { copilotController } from "./copilot-controller";
+
+export { gatewayController } from "./gateway-controller";
+

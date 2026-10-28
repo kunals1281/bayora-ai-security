@@ -13,6 +13,7 @@ import {
   regressionController,
   traceController,
   copilotController,
+  gatewayController,
 } from "./controllers";
 
 export function createApp() {
@@ -36,6 +37,7 @@ export function createApp() {
   app.register(regressionController);
   app.register(traceController);
   app.register(copilotController);
+  app.register(gatewayController);
 
   return app;
 }

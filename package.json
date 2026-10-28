@@ -12,7 +12,9 @@
     "format": "prettier --write .",
     "seed": "tsx scripts/seed.ts",
     "demo": "tsx scripts/demo.ts",
-    "mock-agent": "node mock-agent.js"
+    "mock-agent": "node mock-agent.js",
+    "verify:gateway": "node scripts/verify-gateway.mjs",
+    "verify:gateway:py": "python scripts/verify-gateway.py"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
